@@ -1,72 +1,32 @@
 pipeline {
     agent any
-    
-    environment {
-        DOCKER_IMAGE = 'travel-app'
-        CONTAINER_NAME = 'travel-app-container'
-        APP_PORT = 3000
-    }
-    
+
     stages {
-        stage('Checkout') {
+        stage('Build Docker image') {
             steps {
-                echo "Starting pipeline on ${new Date()}"
-                checkout scm
+                sh 'docker build -t travel-app:latest .'
             }
         }
-        
-        stage('Build Docker Image') {
+        stage('Run tests in Docker') {
             steps {
-                sh 'docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .'
-                sh 'docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest'
-                echo "Docker image built: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                sh 'docker run --rm travel-app:latest npm test'
             }
         }
-        
-        stage('Stop Previous Container') {
+        stage('Run container') {
             steps {
-                script {
-                    echo "Stopping previous container if it exists..."
-                    sh 'docker stop ${CONTAINER_NAME} || true'
-                    sh 'docker rm ${CONTAINER_NAME} || true'
-                }
+                sh 'docker run -d --name travel-app-test -p 3000:3000 travel-app:latest'
             }
         }
-        
-        stage('Run Container') {
+        stage('Test /travel endpoint') {
             steps {
-                echo "Starting container on port ${APP_PORT}..."
-                sh 'docker run -d -p ${APP_PORT}:${APP_PORT} --name ${CONTAINER_NAME} ${DOCKER_IMAGE}:latest'
-            }
-        }
-        
-        stage('Test Application') {
-            steps {
-                script {
-                    echo "Waiting for application to start..."
-                    sh 'sleep 5'
-                    
-                    echo "Testing /travel endpoint..."
-                    def response = sh(script: 'curl -s http://localhost:${APP_PORT}/travel', returnStdout: true).trim()
-                    echo "Response from /travel endpoint: ${response}"
-                    
-                    if (!response.contains('место для путешествий')) {
-                        error "Endpoint /travel не возвращает ожидаемый результат"
-                    }
-                    echo "Test passed!"
-                }
+                sleep 5
+                sh 'curl --fail http://localhost:3000/travel | grep "Моё любимое место для путешествий — Япония."'
             }
         }
     }
-    
     post {
-        success {
-            echo "Pipeline completed successfully on ${new Date()}"
-        }
-        failure {
-            echo "Pipeline failed on ${new Date()}"
-            sh 'docker stop ${CONTAINER_NAME} || true'
-            sh 'docker rm ${CONTAINER_NAME} || true'
+        always {
+            sh 'docker rm -f travel-app-test || true'
         }
     }
 }
