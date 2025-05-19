@@ -25,7 +25,7 @@ pipeline {
         }
     }
     post {
-        always {
+        failure {
             sh 'docker rm -f travel-app-test || true'
         }
     }
